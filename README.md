@@ -14,3 +14,6 @@ Directory containing saved out trained model files
 
 ## `training` directory
 Directory containing training scripts
+
+## `scripts` directory
+Directory containing various helper scripts
