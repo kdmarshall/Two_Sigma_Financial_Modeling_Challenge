@@ -68,6 +68,17 @@ class DataSet(object):
 	def to_df(self):
 		return self.df
 
-	def get_batch(self, slice_index, batch_size, columns=None):
-		pass
+	def get_batch(self, slice_index, batch_size, columns=None, random=False):
+		if random:
+			samples = self.df.sample(n=batch_size)
+		else:
+			num_samples = self.df.shape[0]
+			if (slice_index+1)*batch_size >= num_samples:
+				print "Slice is out of range. Taking last batch_size slice"
+				sample_range = (num_samples - batch_size, num_samples)
+			else:
+				sample_range = (slice_index*batch_size, (slice_index+1)*batch_size)
+			samples = self.df[sample_range[0] : sample_range[1]]
+		samples_matrix = np.array(samples.as_matrix(columns=columns)) if columns else np.array(samples.as_matrix())
+		return samples_matrix
 		
