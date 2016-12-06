@@ -39,6 +39,7 @@ class DataSet(object):
 	def __init__(self, path):
 		self.path = path
 		self.data_dict = self._get_data_dict()
+		self.df = self._get_df()
 
 	def _get_data_dict(self):
 		with h5py.File(self.path,'r') as hf:
@@ -46,6 +47,11 @@ class DataSet(object):
 			data_dict = { hf_key: np.array(train_hf.get(hf_key))
 							for hf_key in train_hf.keys()}
 			return data_dict
+
+	def _get_df(self):
+		with pd.HDFStore(self.path, "r") as train:
+			df = train.get("train")
+			return df
 
 	def __repr__(self):
 		sets = [ "{}: {}".format(key,data_set.shape) 
@@ -60,10 +66,8 @@ class DataSet(object):
 		return self.data_dict.get(key, None)
 
 	def to_df(self):
-		arr0 = self.get('block0_values')
-		header0 = self.get('block0_items')
-		arr1 = self.get('block1_values')
-		header1 = self.get('block1_items')
-		headers = list(header0)+list(header1)
-		df = pd.DataFrame(np.hstack((arr0,arr1)),columns=headers,index=None)
-		return df
+		return self.df
+
+	def get_batch(self, slice_index, batch_size, columns=None):
+		pass
+		
