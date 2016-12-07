@@ -5,6 +5,7 @@ enum34==1.1.6
 h5py==2.6.0
 ipython==5.1.0
 ipython-genutils==0.1.0
+numexpr==2.6.1
 numpy==1.11.2
 pandas==0.19.1
 pathlib2==2.1.0
@@ -17,5 +18,6 @@ python-dateutil==2.6.0
 pytz==2016.7
 simplegeneric==0.8.1
 six==1.10.0
+tables==3.3.0
 traitlets==4.3.1
 wcwidth==0.1.7
