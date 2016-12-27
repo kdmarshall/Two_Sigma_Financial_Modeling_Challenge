@@ -7,13 +7,18 @@ from random import shuffle
 import pandas as pd
 
 from utils.data_utils import DataSet
+from utils.mock_gym import r_score
 
-max_seq_len = 100
+import matplotlib.pyplot as plt # Required for saving out analytics
+import matplotlib as mpl
+mpl.use('TkAgg') # Backend for OSX -- change accordingly
+
+max_seq_len = 50
 
 num_features = 109#examples.shape[-1]
-rnn_size = 30
+rnn_size = 512
 rnn_cell = tf.nn.rnn_cell.BasicLSTMCell(rnn_size)
-batch_size = 2
+batch_size = 16
 
 norm_init = tf.random_normal_initializer(0, 1)
 embedding_weights = tf.get_variable('emb_w', [num_features, rnn_size*2], initializer=norm_init)
@@ -39,7 +44,7 @@ targets_placeholder = tf.placeholder("float32", [batch_size, max_seq_len])
 weights_placeholder = tf.placeholder("float32", [batch_size, max_seq_len])
 #rewards_placeholder = tf.placeholder("float32", [batch_size, 1])
 
-inputs = tf.transpose(observation_placeholder, [1, 0, 2])
+inputs = tf.transpose(observation_placeholder/2., [1, 0, 2])
 
 outputs, _ = tf.nn.dynamic_rnn(rnn_cell, inputs, time_major=True, scope='lstm', dtype=tf.float32)
 
@@ -53,16 +58,26 @@ for timestep in tf.split(0, max_seq_len, outputs):
 logits = tf.squeeze(tf.pack(logits))
 logits = tf.transpose(logits, [1, 0])
 
-loss = tf.reduce_sum(tf.square(tf.sub(logits, targets_placeholder*10.)) * weights_placeholder / tf.reduce_sum(weights_placeholder))
+
+loss = tf.reduce_sum(tf.square(tf.sub(logits, targets_placeholder*10.)) * weights_placeholder )#/ tf.reduce_sum(weights_placeholder))
 
 learning_rate = 0.001
 optimizer = tf.train.AdamOptimizer(learning_rate).minimize(loss)
 
 saver = tf.train.Saver()
 
+def save_analytics(true, pred, r_values, step):
+
+    plt.plot(range(len(true)), true)
+    plt.plot(range(len(pred)), pred)
+    plt.plot(range(len(pred)), r_values)
+    plt.savefig('/Users/Peace/Desktop/outputs/example{0}.png'.format(step))
+    plt.clf()
+
+
 with tf.Session() as sess:
     tf.initialize_all_variables().run()
-    avg = []
+    #avg = []
 
     #batch_input = np.random.normal(size=(batch_size, max_seq_len, 109))
     #batch_targets = np.random.normal(size=(batch_size, max_seq_len)) / 20.
@@ -70,33 +85,44 @@ with tf.Session() as sess:
     
     dataset = DataSet()
     
-    fs
+    data = dataset.get_numpy_data()
     
+    trainset, train_validset, validset = dataset.split_valid(*data, 0.5)
     
+    for step in range(1000000):
     
-    batch_input, batch_targets, batch_weights = load_data()
-    
+        input, targets, weights = dataset.get_numpy_batch(trainset,
+                                                       batch_size, max_seq_len)
 
-
-    
-    batch_input = batch_input[:batch_size, :100]
-    batch_targets = batch_targets[:batch_size, :100]
-    batch_weights = batch_weights[:batch_size, :100]
-    
-
-    
-    for step in range(1000):
-
-        l, _ = sess.run([loss, optimizer],
+        l, _, logs = sess.run([loss, optimizer, logits],
                            feed_dict={
-                            observation_placeholder: batch_input,
-                            targets_placeholder: batch_targets,
-                            weights_placeholder: batch_weights})
-        avg.append(l)
-        if step % 10 == 0:
+                            observation_placeholder: input,
+                            targets_placeholder: targets,
+                            weights_placeholder: weights})
+        #avg.append(l)
+        if step % 100 == 0:
+            input, targets, weights = dataset.get_numpy_batch(validset,
+                                                       batch_size, max_seq_len)
+            l, logs = sess.run([loss, logits],
+                               feed_dict={
+                                observation_placeholder: input,
+                                targets_placeholder: targets,
+                                weights_placeholder: weights})
             #print('***')
-            print('Step {0}: {1}'.format(step, np.mean(avg)*100))
-            avg = []
+            #print('Step {0}: {1}'.format(step, np.mean(avg)))
+            print('Step {0}: {1}'.format(step, l))
+            #print(logs)
+            #avg = []
+            r_values = []
+
+            for v1, v2 in zip(np.rollaxis(targets, 1, 0), np.rollaxis(logs/10., 1, 0)):
+                r_values.append(r_score(np.array(v1), np.array(v2)))
+
+            save_analytics(targets[0]*10, logs[0], np.squeeze(np.array(r_values)), step)
+
+
+
+
 
             #saver.save(sess, "/Users/Peace/Projects/halite/models/production/model.ckp")
 
