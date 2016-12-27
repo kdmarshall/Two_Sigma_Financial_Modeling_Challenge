@@ -85,14 +85,27 @@ class DataSet(object):
     def get_numpy_data(self):
 
         df = self.df
+        
+        means = []
+        stds = []
+        
+        # Assuming column order remains consistent throughout the class
+        for col in df.columns:
+            if col not in ['y', 'timestamp', 'index']:
+                data = df[col].dropna().as_matrix()
+                means.append(np.mean(data))
+                stds.append(np.std(data))
+    
+        col_means = np.array(means)
+        col_stds = np.array(stds)
 
         # Ensure values are sorted by time
         df = df.sort(['id', 'timestamp'], ascending=True)
 
         max_seq_len_raw = 1820
 
-        # Simply zero-fill missing values for now
-        df = df.fillna(0)
+        # Simply mean-fill missing values for now
+        df = df.fillna(df.mean())
         
         ids = np.unique(df['id'].as_matrix())
         examples = []
@@ -124,6 +137,11 @@ class DataSet(object):
         targets = np.array(targets)
         weights = np.array(weights)
         
+        # Normalize the data
+        examples = (examples - col_means)/col_stds
+        
+        # TODO: Supply these outside the function later: col_means, col_stds
+
         return examples, targets, weights
 
     def split_valid(self, examples, targets, weights, valid_split_ratio=0.5):

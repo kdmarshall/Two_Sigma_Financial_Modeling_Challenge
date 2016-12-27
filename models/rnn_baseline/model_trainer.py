@@ -44,7 +44,7 @@ targets_placeholder = tf.placeholder("float32", [batch_size, max_seq_len])
 weights_placeholder = tf.placeholder("float32", [batch_size, max_seq_len])
 #rewards_placeholder = tf.placeholder("float32", [batch_size, 1])
 
-inputs = tf.transpose(observation_placeholder/2., [1, 0, 2])
+inputs = tf.transpose(observation_placeholder, [1, 0, 2])
 
 outputs, _ = tf.nn.dynamic_rnn(rnn_cell, inputs, time_major=True, scope='lstm', dtype=tf.float32)
 
@@ -93,6 +93,13 @@ with tf.Session() as sess:
     
         input, targets, weights = dataset.get_numpy_batch(trainset,
                                                        batch_size, max_seq_len)
+        #print(np.max(input))
+        #print(np.min(input))
+        #print(np.mean(input))
+        #print(np.max(targets))
+        #print(np.min(targets))
+        #print(np.mean(targets))
+        #sdfsf
 
         l, _, logs = sess.run([loss, optimizer, logits],
                            feed_dict={
@@ -103,6 +110,7 @@ with tf.Session() as sess:
         if step % 100 == 0:
             input, targets, weights = dataset.get_numpy_batch(validset,
                                                        batch_size, max_seq_len)
+            
             l, logs = sess.run([loss, logits],
                                feed_dict={
                                 observation_placeholder: input,
