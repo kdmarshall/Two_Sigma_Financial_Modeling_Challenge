@@ -126,7 +126,7 @@ class DataSet(object):
         
         return examples, targets, weights
 
-    def split_dataset(self, examples, targets, weights, valid_split_ratio=0.5):
+    def split_valid(self, examples, targets, weights, valid_split_ratio=0.5):
         """
         Args:
             valid_split_ratio: float range 0-1.; percentage of data reserved
@@ -179,21 +179,32 @@ class DataSet(object):
 
         return trainset, train_validset, validset
 
-    def get_numpy_batch(self, dataset, batch_size):
-        # Sample a random id
-        idx = np.random.choice(range(dataset[0].shape[0]))
+    def get_numpy_batch(self, dataset, batch_size, seq_len):
+        examples = []
+        targets = []
+        weights = []
         
-        # Take random slice
-        max_seq_len = dataset[0][idx].shape[0]
-        
-        assert max_seq_len >= batch_size
-        slice = np.random.choice(range(max_seq_len - batch_size))
-        
-        examples = dataset[0][idx][slice:slice+batch_size]
-        targets = dataset[1][idx][slice:slice+batch_size]
-        weights = dataset[2][idx][slice:slice+batch_size]
+        #for _ in range(batch_size):
+        while len(targets) < batch_size:
+            # Sample a random id
+            idx = np.random.choice(range(dataset[0].shape[0]))
+            
+            # Take random slice
+            max_seq_len = dataset[0][idx].shape[0]
+            
+            assert max_seq_len >= seq_len
+            slice = np.random.choice(range(max_seq_len - seq_len))
+            
+            # Let's just go with full length for now
+            w = dataset[2][idx][slice:slice+seq_len]
+            if np.sum(w) != len(w):
+                continue
+            
+            examples.append(dataset[0][idx][slice:slice+seq_len])
+            targets.append(dataset[1][idx][slice:slice+seq_len])
+            weights.append(w)
 
-        return examples, targets, weights
+        return np.array(examples), np.array(targets), np.array(weights)
 
 
 
