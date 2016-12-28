@@ -100,7 +100,7 @@ class DataSet(object):
         col_stds = np.array(stds)
 
         # Ensure values are sorted by time
-        df = df.sort(['id', 'timestamp'], ascending=True)
+        df = df.sort_values(by=['id', 'timestamp'], ascending=True)
 
         max_seq_len_raw = 1820
 
@@ -158,13 +158,13 @@ class DataSet(object):
 
         valid_num = int(round(num_ids*valid_split_ratio))
 
-        examples_train_pre = examples[:valid_num]
-        targets_train_pre = targets[:valid_num]
-        weights_train_pre = weights[:valid_num]
+        examples_train_pre = examples[:-valid_num]
+        targets_train_pre = targets[:-valid_num]
+        weights_train_pre = weights[:-valid_num]
 
-        examples_valid = examples[valid_num:]
-        targets_valid = targets[valid_num:]
-        weights_valid = weights[valid_num:]
+        examples_valid = examples[-valid_num:]
+        targets_valid = targets[-valid_num:]
+        weights_valid = weights[-valid_num:]
 
         examples_train = []
         targets_train = []
