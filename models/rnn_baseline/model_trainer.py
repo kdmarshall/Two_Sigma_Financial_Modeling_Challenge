@@ -12,6 +12,7 @@ from utils.mock_gym import r_score
 # Training options
 SAVE_ANALYTICS = False
 OUTDIR = '/Users/Peace/Desktop/outputs'
+RANDOM_SEED = 8888
 
 if SAVE_ANALYTICS:
     import matplotlib.pyplot as plt # Required for saving out analytics
@@ -44,21 +45,24 @@ print('initializing...')
 max_seq_len = 30
 num_features = 109 # TODO: examples.shape[-1]
 rnn_size = 8
+p_l1_size = 4
 batch_size = 128
 learning_rate = 1e-3
 num_steps = 100000
 valid_steps = 100
 
+np.random.seed(RANDOM_SEED)
+
 # Initialize TF variables
 rnn_cell = tf.nn.rnn_cell.BasicLSTMCell(rnn_size)
 embedding_weights = tf.get_variable('emb_w', [num_features, rnn_size], initializer=tf.contrib.layers.xavier_initializer())
-p_l1_weights = tf.get_variable('pred_l1_w', [rnn_size, 4], initializer=tf.contrib.layers.xavier_initializer())
-p_l1_bias = tf.get_variable('pred_l1_b', initializer=tf.constant(0.))
-prediction_weights = tf.get_variable('pred_w', [4, 1], initializer=tf.contrib.layers.xavier_initializer())
+p_l1_weights = tf.get_variable('pred_l1_w', [rnn_size, p_l1_size], initializer=tf.contrib.layers.xavier_initializer())
+p_l1_bias = tf.get_variable('pred_l1_b', initializer=tf.constant(0., shape=[p_l1_size]))
+prediction_weights = tf.get_variable('pred_w', [p_l1_size, 1], initializer=tf.contrib.layers.xavier_initializer())
 prediction_bias = tf.get_variable('pred_b', initializer=tf.constant(0.))
 
 # Input nodes into the graph
-observation_placeholder = tf.placeholder("float32", [batch_size, max_seq_len, 109])
+observation_placeholder = tf.placeholder("float32", [batch_size, max_seq_len, num_features])
 targets_placeholder = tf.placeholder("float32", [batch_size, max_seq_len])
 weights_placeholder = tf.placeholder("float32", [batch_size, max_seq_len])
 #rewards_placeholder = tf.placeholder("float32", [batch_size, 1])
@@ -104,6 +108,7 @@ optimizer = tf.train.AdamOptimizer(learning_rate).minimize(loss)
 saver = tf.train.Saver()
 
 with tf.Session() as sess:
+    tf.set_random_seed(RANDOM_SEED)
     tf.global_variables_initializer().run()
 
     # Useful for testing overfit model
@@ -122,6 +127,9 @@ with tf.Session() as sess:
     # shape: 712, 1520 when split 0.5
     # Epoch about every ~8000 steps (not true epoch due to shifted seq)
     
+    with open(os.path.join(OUTDIR, 'log.csv'), 'w') as outfile:
+        outfile.write('Step,Train R,Valid R\n')
+    
     print('training...')
     print('Format: Train R -- Valid R')
     avg = []
@@ -138,7 +146,7 @@ with tf.Session() as sess:
                             targets_placeholder: targets,
                             weights_placeholder: weights})
         avg.append(-l)
-        if step % 1000 == 0:
+        if step % 500 == 0:
             vavg = []
             for vstep in range(valid_steps):
                 input, targets, weights = dataset.get_numpy_batch(validset,
@@ -155,6 +163,9 @@ with tf.Session() as sess:
                 vavg.append(-l)
 
             print('Step {0}: {1:.4f} {2:.4f}'.format(step, np.mean(avg), np.mean(vavg)))
+            
+            with open(os.path.join(OUTDIR, 'log.csv'), 'a') as outfile:
+                outfile.write('{0},{1:.4f},{2:.4f}\n'.format(step, np.mean(avg), np.mean(vavg)))
 
             avg = []
 
