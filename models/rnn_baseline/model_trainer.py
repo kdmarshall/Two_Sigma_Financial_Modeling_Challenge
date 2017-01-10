@@ -14,6 +14,9 @@ SAVE_ANALYTICS = False
 OUTDIR = '/Users/Peace/Desktop/outputs'
 RANDOM_SEED = 8888
 
+np.random.seed(RANDOM_SEED)
+tf.set_random_seed(RANDOM_SEED)
+
 if SAVE_ANALYTICS:
     import matplotlib.pyplot as plt # Required for saving out analytics
     import matplotlib as mpl
@@ -44,14 +47,12 @@ print('initializing...')
 # Hyperparameters
 max_seq_len = 30
 num_features = 109 # TODO: examples.shape[-1]
-rnn_size = 8
-p_l1_size = 4
+rnn_size = 128
+p_l1_size = 100
 batch_size = 128
 learning_rate = 1e-3
 num_steps = 100000
 valid_steps = 100
-
-np.random.seed(RANDOM_SEED)
 
 # Initialize TF variables
 rnn_cell = tf.nn.rnn_cell.BasicLSTMCell(rnn_size)
@@ -66,13 +67,14 @@ observation_placeholder = tf.placeholder("float32", [batch_size, max_seq_len, nu
 targets_placeholder = tf.placeholder("float32", [batch_size, max_seq_len])
 weights_placeholder = tf.placeholder("float32", [batch_size, max_seq_len])
 #rewards_placeholder = tf.placeholder("float32", [batch_size, 1])
+keep_prob_placeholder = tf.placeholder(tf.float32)
 
 def get_graph():
     inputs = tf.transpose(observation_placeholder, [1, 0, 2])
 
     embedded = []
     for input in tf.unpack(inputs, axis=0):
-        act = tf.matmul(input, embedding_weights)
+        act = tf.nn.dropout(tf.matmul(input, embedding_weights), keep_prob_placeholder)
         embedded.append(act)
 
     outputs, _ = tf.nn.dynamic_rnn(rnn_cell, tf.pack(embedded), time_major=True, scope='lstm', dtype=tf.float32)
@@ -80,7 +82,7 @@ def get_graph():
     logits = []
     for timestep in tf.split(0, max_seq_len, outputs):
         pre_act_l1 = tf.matmul(tf.squeeze(timestep), p_l1_weights) + p_l1_bias
-        act_l1 = relu(pre_act_l1, 0.3)
+        act_l1 = tf.nn.dropout(relu(pre_act_l1, 0.3), keep_prob_placeholder)
         pre_act_l2 = tf.matmul(act_l1, prediction_weights) + prediction_bias
         logit = tf.tanh(pre_act_l2)
         logits.append(logit)
@@ -91,7 +93,7 @@ def get_graph():
     # R is differentiable, so we can optimize the evaluation function directly
     y_true = targets_placeholder*10. # Scale to take adv of full tanh range
     diffs = tf.square(y_true - logits) * weights_placeholder
-    y_true_mean = tf.reduce_sum(y_true)/tf.reduce_sum(weights_placeholder)
+    y_true_mean = tf.reduce_sum(y_true * weights_placeholder)/tf.reduce_sum(weights_placeholder)
     denom = tf.reduce_sum(tf.square(y_true - y_true_mean) * weights_placeholder)
     R2 = 1 - tf.reduce_sum(diffs) / (denom + 1e-17)
     loss = -1 * tf.sign(R2) * tf.sqrt(tf.abs(R2)) # -1 to maximize R
@@ -108,7 +110,6 @@ optimizer = tf.train.AdamOptimizer(learning_rate).minimize(loss)
 saver = tf.train.Saver()
 
 with tf.Session() as sess:
-    tf.set_random_seed(RANDOM_SEED)
     tf.global_variables_initializer().run()
 
     # Useful for testing overfit model
@@ -144,9 +145,10 @@ with tf.Session() as sess:
                            feed_dict={
                             observation_placeholder: input,
                             targets_placeholder: targets,
-                            weights_placeholder: weights})
+                            weights_placeholder: weights,
+                            keep_prob_placeholder: 0.5})
         avg.append(-l)
-        if step % 500 == 0:
+        if step % 200 == 0:
             vavg = []
             for vstep in range(valid_steps):
                 input, targets, weights = dataset.get_numpy_batch(validset,
@@ -158,7 +160,8 @@ with tf.Session() as sess:
                                    feed_dict={
                                     observation_placeholder: input,
                                     targets_placeholder: targets,
-                                    weights_placeholder: weights})
+                                    weights_placeholder: weights,
+                                    keep_prob_placeholder: 1.0})
             
                 vavg.append(-l)
 
@@ -175,8 +178,16 @@ with tf.Session() as sess:
                 for v1, v2 in zip(np.rollaxis(targets, 1, 0), np.rollaxis(logs/10., 1, 0)):
                     r_values.append(r_score(np.array(v1), np.array(v2)))
                 save_analytics(targets[0]*10, logs[0], np.squeeze(np.array(r_values)), step)
+                
+            # Rudimentary early stopping for now (TODO: Learning rate decay;
+            # conditional model saving)
+            if np.mean(vavg) > 0.018:
+                break
 
-            #saver.save(sess, OUTDIR+'/models/model.ckp")
+            saver.save(sess, OUTDIR+'/models/model.ckp')
+
+
+
 
 
 
