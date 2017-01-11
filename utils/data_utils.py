@@ -91,7 +91,7 @@ class DataSet(object):
         
         # Assuming column order remains consistent throughout the class
         for col in df.columns:
-            if col not in ['y', 'timestamp', 'index']:
+            if col not in ['y', 'timestamp', 'index', 'id']:
                 data = df[col].dropna().as_matrix()
                 means.append(np.mean(data))
                 stds.append(np.std(data))
@@ -124,6 +124,7 @@ class DataSet(object):
             padded.drop('y', axis=1, inplace=True)
             padded.drop('timestamp', axis=1, inplace=True)
             padded.drop('index', axis=1, inplace=True)
+            padded.drop('id', axis=1, inplace=True)
             
             example = padded.as_matrix()
             

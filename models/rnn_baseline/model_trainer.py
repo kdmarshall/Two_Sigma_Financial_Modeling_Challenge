@@ -46,7 +46,7 @@ print('initializing...')
 
 # Hyperparameters
 max_seq_len = 30
-num_features = 109 # TODO: examples.shape[-1]
+num_features = 108 # TODO: examples.shape[-1]
 rnn_size = 128
 p_l1_size = 100
 batch_size = 128
