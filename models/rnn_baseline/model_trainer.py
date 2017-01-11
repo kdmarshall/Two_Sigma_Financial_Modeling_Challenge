@@ -128,8 +128,9 @@ with tf.Session() as sess:
     # shape: 712, 1520 when split 0.5
     # Epoch about every ~8000 steps (not true epoch due to shifted seq)
     
-    with open(os.path.join(OUTDIR, 'log.csv'), 'w') as outfile:
-        outfile.write('Step,Train R,Valid R\n')
+    if SAVE_ANALYTICS:
+        with open(os.path.join(OUTDIR, 'log.csv'), 'w') as outfile:
+            outfile.write('Step,Train R,Valid R\n')
     
     print('training...')
     print('Format: Train R -- Valid R')
@@ -167,8 +168,9 @@ with tf.Session() as sess:
 
             print('Step {0}: {1:.4f} {2:.4f}'.format(step, np.mean(avg), np.mean(vavg)))
             
-            with open(os.path.join(OUTDIR, 'log.csv'), 'a') as outfile:
-                outfile.write('{0},{1:.4f},{2:.4f}\n'.format(step, np.mean(avg), np.mean(vavg)))
+            if SAVE_ANALYTICS:
+                with open(os.path.join(OUTDIR, 'log.csv'), 'a') as outfile:
+                    outfile.write('{0},{1:.4f},{2:.4f}\n'.format(step, np.mean(avg), np.mean(vavg)))
 
             avg = []
 
@@ -178,13 +180,17 @@ with tf.Session() as sess:
                 for v1, v2 in zip(np.rollaxis(targets, 1, 0), np.rollaxis(logs/10., 1, 0)):
                     r_values.append(r_score(np.array(v1), np.array(v2)))
                 save_analytics(targets[0]*10, logs[0], np.squeeze(np.array(r_values)), step)
+
+            if SAVE_ANALYTICS:
+                saver.save(sess, OUTDIR+'/models/model.ckp')
                 
             # Rudimentary early stopping for now (TODO: Learning rate decay;
             # conditional model saving)
             if np.mean(vavg) > 0.018:
+                print('Training complete.')
                 break
+                
 
-            saver.save(sess, OUTDIR+'/models/model.ckp')
 
 
 
