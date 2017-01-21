@@ -6,8 +6,12 @@ import os
 from random import shuffle
 import pandas as pd
 import h5py
+from scipy.integrate import simps
+import warnings
+from sklearn.metrics import r2_score
 
 DEBUG = True
+RUN = False
 
 if DEBUG:
     PROJECT_DIR = os.path.dirname(
@@ -22,13 +26,26 @@ else:
     TRAIN_DATA_FILE = '../input/train.h5'
     import kagglegym
 
-env = kagglegym.make()
-obs = env.reset()
+
 
 RANDOM_SEED = 8888
 
 np.random.seed(RANDOM_SEED)
 tf.set_random_seed(RANDOM_SEED)
+
+def r_score(y_true, y_pred, sample_weight=None, multioutput=None):
+
+    # SKL is not self-consistent. Filter out the many deprecation warnings.
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore",category=DeprecationWarning)
+        r2 = r2_score(y_true, y_pred, sample_weight=sample_weight, multioutput=multioutput)
+        r = (np.sign(r2)*np.sqrt(np.abs(r2)))
+    if r <= -1:
+        return -1
+    else:
+        return r
+
+
 
 class DataSet(object):
     """class for dataset processing"""
@@ -85,6 +102,11 @@ class DataSet(object):
     def get_numpy_data(self):
 
         df = self.df
+        
+        # Let's limit the data for now
+        features = ['technical_20', 'technical_30']
+        meta = ['y', 'timestamp', 'id']
+        df = df[features+meta]
         
         means = []
         stds = []
@@ -179,7 +201,7 @@ class DataSet(object):
         targets_train_valid = []
         weights_train_valid = []
         
-        valid_len = 300 # Hardcoded for now
+        valid_len = 900 # Hardcoded for now
 
         for arr1, arr2, arr3 in zip(examples_train_pre, targets_train_pre,
                                                             weights_train_pre):
@@ -261,13 +283,15 @@ print('initializing...')
 
 # Hyperparameters
 max_seq_len = 30
-num_features = 108 # TODO: examples.shape[-1]
-rnn_size = 128
-p_l1_size = 100
-batch_size = 128
-learning_rate = 1e-3
+num_features = 2#108 # TODO: examples.shape[-1]
+rnn_size = 512
+p_l1_size = 128
+batch_size = 128*10
+learning_rate = 1e-4
 num_steps = 100000
-valid_steps = 100
+valid_steps = 300
+split_ratio = 0.5 # % of ids reserved for validation
+keep_prob = 1 # Only used during training
 
 # Initialize TF variables
 rnn_cell = tf.nn.rnn_cell.BasicLSTMCell(rnn_size)
@@ -279,8 +303,8 @@ prediction_bias = tf.get_variable('pred_b', initializer=tf.constant(0.))
 
 # Input nodes into the graph
 observation_placeholder = tf.placeholder("float32", [None, max_seq_len, num_features])
-targets_placeholder = tf.placeholder("float32", [batch_size, max_seq_len])
-weights_placeholder = tf.placeholder("float32", [batch_size, max_seq_len])
+targets_placeholder = tf.placeholder("float32", [None, max_seq_len])
+weights_placeholder = tf.placeholder("float32", [None, max_seq_len])
 #rewards_placeholder = tf.placeholder("float32", [batch_size, 1])
 keep_prob_placeholder = tf.placeholder(tf.float32)
 
@@ -306,8 +330,8 @@ def get_graph():
     logits = tf.transpose(logits, [1, 0])
 
     # R is differentiable, so we can optimize the evaluation function directly
-    y_true = targets_placeholder*10. # Scale to take adv of full tanh range
-    diffs = tf.square(y_true - logits) * weights_placeholder
+    y_true = targets_placeholder
+    diffs = tf.square(y_true - logits/10.) * weights_placeholder # Scale to take adv of full tanh range
     y_true_mean = tf.reduce_sum(y_true * weights_placeholder)/tf.reduce_sum(weights_placeholder)
     denom = tf.reduce_sum(tf.square(y_true - y_true_mean) * weights_placeholder)
     R2 = 1 - tf.reduce_sum(diffs) / (denom + 1e-17)
@@ -335,12 +359,13 @@ with tf.Session() as sess:
     dataset = DataSet()
     
     examples, targets, weights = dataset.get_numpy_data()
+
     
     del dataset.df
     
     examples = dataset.normalize(examples)
 
-    trainset, train_validset, validset = dataset.split_valid(examples, targets, weights, 0.25)
+    trainset, train_validset, validset = dataset.split_valid(examples, targets, weights, split_ratio)
     
     del examples
     del targets
@@ -359,23 +384,27 @@ with tf.Session() as sess:
     
         input, targets, weights = dataset.get_numpy_batch(trainset,
                                                        batch_size, max_seq_len)
+
         # Allow for burn-in
-        weights[:5] = 0
+        weights[:-2] = 0
 
         l, _, logs = sess.run([loss, optimizer, logits],
                            feed_dict={
                             observation_placeholder: input,
                             targets_placeholder: targets,
                             weights_placeholder: weights,
-                            keep_prob_placeholder: 0.5})
+                            keep_prob_placeholder: keep_prob})
         avg.append(-l)
-        if step % 200 == 0:
+        #if DEBUG or RUN: # Don't need to validate during submission
+        if step % 200 == 0 and step > -1:
             vavg = []
-            for vstep in range(valid_steps):
+            y_trues = []
+            y_hats = []
+            for vstep in range(int(round(12000/batch_size))):
                 input, targets, weights = dataset.get_numpy_batch(validset,
                                                                    batch_size,
                                                                    max_seq_len)
-                weights[:5] = 0
+                weights[:-2] = 0
 
                 l, logs = sess.run([loss, logits],
                                    feed_dict={
@@ -385,31 +414,90 @@ with tf.Session() as sess:
                                     keep_prob_placeholder: 1.0})
             
                 vavg.append(-l)
+                y_hats += list(logs[:, -1]/10.)
+                y_trues += list(targets[:, -1])
+                
+            scores = []
+            areas = []
+            for i in range(20, len(y_hats)):
+                scores.append(r_score(y_trues[:i], y_hats[:i]))
+                area = simps(scores, dx=1)
+                areas.append(area)
+            if False:#DEBUG:
+                np.save('/Users/Peace/Desktop/truesT', np.array(y_trues))
+                np.save('/Users/Peace/Desktop/hatsT', np.array(y_hats))
+                np.save('/Users/Peace/Desktop/areasT', np.array(areas))
+                saver.save(sess, '/Users/Peace/Desktop/temp3.ckp')
+            
+            # Exponential decay to help with metric stability problem
+            scores_ed = []
+            for i in range(len(scores)):
+                scores_ed.append(scores[i]*(0.98**i))
+            area_ed = simps(scores_ed, dx=1)
 
-            print('Step {0}: {1:.4f} {2:.4f}'.format(step, np.mean(avg), np.mean(vavg)))
+            print('Step {0}: {1:.4f} {2:.4f} {3:.4f} {4:.4f}'.format(step, np.mean(avg), np.mean(vavg), scores[-1], area_ed)) # Area is current. We want to know the final area here only.
 
             avg = []
+            
+            if np.mean(vavg) > 0 and scores[-1] > 0 and area_ed > 0:
+                break
 
-            #saver.save(sess, '/Users/Peace/Desktop/temp.ckp')
+
             # Rudimentary early stopping for now (TODO: Learning rate decay;
             # conditional model saving)
-            if np.mean(vavg) > 0.018:
-                break
+            #if np.mean(vavg) > 0.018 or step == 1800:
+            #    break
 
             # For debugging
-            if DEBUG:
-                saver.restore(sess, '/Users/Peace/Desktop/temp.ckp')
-                break
+            #if DEBUG:
+            #    saver.restore(sess, '/Users/Peace/Desktop/temp2.ckp')
+            #    break
 
+
+                    
+
+
+
+
+    if False:
+        y_trues = []
+        y_hats = []
+        # Run a bunch of validation steps to assess volatility of R
+        for vstep in range(int(round(2000/batch_size))):
+            input, targets, weights = dataset.get_numpy_batch(validset,
+                                                               batch_size,
+                                                               max_seq_len)
+
+
+            logs = sess.run([logits],
+                               feed_dict={
+                                observation_placeholder: input,
+                                keep_prob_placeholder: 1.0})[0]
+            y_hats += list(logs[:, -1]/10.)
+            y_trues += list(targets[:, -1])
+
+        #print('trues:')
+        #for item in y_trues:
+        #    print(item)
+        #print('hats:')
+        #for item in y_hats:
+        #    print(item)
+        #import matplotlib.pyplot as plt
+        np.save('/Users/Peace/Desktop/trues', np.array(y_trues))
+        np.save('/Users/Peace/Desktop/hats', np.array(y_hats))
+    #mbjh
     del trainset
     del train_validset
     del validset
+
+    env = kagglegym.make()
+    obs = env.reset()
 
     # Now that training is complete, we can start predicting the target
     history = {}
     running_seq = []
     rewards = []
-    print('Average reward over time:')
+    #print('Average reward over time:')
     while True:
         data, ids = dataset.preprocess_timestep(obs.features)
         # Unfortunately, the targets come in disjointedly, so we need to create a
@@ -464,7 +552,8 @@ with tf.Session() as sess:
         obs, reward, done, info = env.step(pred)
         
         rewards.append(reward)
-        print(np.mean(rewards))
+        #print(np.mean(rewards))
+        #print(info["public_score_moving"])
 
         if done:
             print('Final score:')

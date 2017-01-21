@@ -154,6 +154,12 @@ class Environment(object):
         else:
             reward = r_score(self.temp_test_y, target.loc[:, 'y'])
             done = False
+            #if len(self.full['y_hat']) <= 400:
+            #    score_m = r_score(self.full['y'], self.full['y_hat'])
+            #else:
+            #    score_m = r_score(self.full['y'][-400:], self.full['y_hat'][len(self.full['y'])-400:])
+            #info = {'public_score': r_score(self.full['y'], self.full['y_hat']),
+            #       'public_score_moving':score_m}
             info = {}
             timesplit = self.unique_timestamp[self.unique_idx]
             self.unique_idx += 1
